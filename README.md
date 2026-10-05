@@ -50,13 +50,28 @@ docker-compose up -d
 
 ### C. Buat File docker-compose.yml
 
+**⚠️ PENTING:** Disarankan untuk clone repository ini agar file docker-compose.yml dan Dockerfile otomatis terisi tanpa perlu input manual. Lihat opsi 1 di bawah.
+
 #### 1. Buat direktori kerja
 ```bash
 mkdir ~/compose
 cd ~/compose
 ```
 
-#### 2. Buat file docker-compose.yml
+#### 2. Clone repository (Opsi 1 - Rekomendasi)
+Clone repository ini untuk mendapatkan file docker-compose.yml dan Dockerfile secara otomatis:
+```bash
+git clone https://github.com/Deri-Nugroho/docker-5.git .
+```
+
+Dengan cara ini, file-file yang dibutuhkan (docker-compose.yml, Dockerfile, README.md) akan otomatis terisi tanpa perlu input manual.
+
+**Lanjut ke langkah D. Menjalankan Docker Compose**
+
+---
+
+#### 3. Buat file docker-compose.yml manual (Opsi 2)
+Jika ingin membuat file secara manual:
 ```bash
 nano docker-compose.yml
 ```
