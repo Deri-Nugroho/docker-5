@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  dbserver:
+    image: mariadb:11-jammy
+    environment:
+      MYSQL_ROOT_PASSWORD: pass123
+    networks:
+      - mynet
+    volumes:
+      - db-data:/var/lib/mysql
+
+  webserver:
+    build: .            # pakai Dockerfile di folder ini (seperti LKPD 3)
+    container_name: webserver
+    ports:
+      - "8088:80"
+    volumes:
+      - /var/mywww:/var/www/html
+    depends_on:
+      - dbserver
+    networks:
+      - mynet
+    restart: unless-stopped
+
+networks:
+  mynet:
+
+volumes:
+  db-data:
