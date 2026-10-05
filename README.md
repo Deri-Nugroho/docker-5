@@ -10,6 +10,7 @@ Docker Compose adalah alat untuk menjalankan banyak container sekaligus (misalny
 
 ### A. Instal Paket Docker Compose (Jika Belum Ada)
 
+#### 1. Install Docker Compose
 ```bash
 sudo apt update
 sudo apt install -y docker-compose
@@ -21,12 +22,32 @@ sudo apt update
 sudo apt install -y docker-compose-plugin
 ```
 
-Cek versi:
+**Catatan:** Jika `docker-compose-plugin` tidak tersedia di repository, gunakan `docker-compose` (standalone) yang sudah terinstall.
+
+#### 2. Cek versi
 ```bash
 docker-compose --version
 # atau untuk v2
 docker compose version
 ```
+
+#### 3. Setup Permission Docker (PENTING)
+Jika mengalami error "permission denied while trying to connect to the docker API":
+```bash
+# Tambahkan user ke group docker
+sudo usermod -aG docker $USER
+sudo newgrp docker
+
+# Verifikasi docker bisa diakses tanpa sudo
+docker --version
+docker ps
+```
+
+**Catatan Penting:**
+- Setelah menjalankan `sudo newgrp docker`, shell akan berubah ke root (prompt berubah dari `$` ke `#`)
+- Lanjutkan dengan perintah docker tanpa sudo
+- Jika masih error permission denied, gunakan `sudo` di depan perintah docker
+- Error ini sering terjadi jika user belum ditambahkan ke group docker
 
 ---
 
@@ -155,16 +176,32 @@ sudo mkdir -p /var/mywww/uploads
 sudo chown -R www-data:www-data /var/mywww/uploads
 ```
 
+**Catatan Penting:**
+- Jika mengalami error "read-only file system" saat mount volume di langkah 5, gunakan lokasi di home directory:
+  ```bash
+  mkdir -p ~/mywww
+  git clone https://github.com/Deri-Nugroho/docker-2.git ~/mywww
+  mkdir -p ~/mywww/uploads
+  sudo chown -R www-data:www-data ~/mywww/uploads
+  ```
+  Lalu ubah volume di docker-compose.yml dari `/var/mywww:/var/www/html` menjadi `~/mywww:/var/www/html`
+
 #### 5. Jalankan semua service dengan docker-compose
 ```bash
 docker-compose up -d
 ```
 
 Perintah ini akan:
-- Membuat network `mynet` secara otomatis
+- Membuat network `compose_mynet` secara otomatis (nama network akan memiliki prefix nama folder)
 - Build image dari Dockerfile (jika belum ada)
 - Menjalankan container `dbserver` dan `webserver`
 - Menghubungkan keduanya ke network yang sama
+- Membuat volume `compose_db-data` untuk persistensi database
+
+**Catatan:**
+- Proses ini akan memakan waktu beberapa menit karena perlu pull image mariadb dan build image webserver
+- Container name akan memiliki prefix: `compose_dbserver_1` dan `compose_webserver_1` (nama folder + nama service)
+- Network name akan menjadi `compose_mynet` (nama folder + nama network)
 
 #### 6. Cek status container
 ```bash
@@ -172,6 +209,10 @@ docker-compose ps
 ```
 
 Pastikan kedua service berstatus `Up`.
+
+**Error yang mungkin terjadi:**
+- Jika salah satu container status `Exited`, cek log dengan `docker-compose logs <nama-service>`
+- Jika webserver exited karena error, biasanya karena issue dengan volume mount atau Dockerfile
 
 #### 7. Lihat log service
 ```bash
@@ -260,7 +301,26 @@ Jika menggunakan Docker Compose plugin resmi (v2), perintah yang sama dapat ditu
 
 ### H. Error yang Sering Terjadi dan Solusinya
 
-#### 1. Dockerfile tidak ditemukan
+#### 1. Permission Denied saat menjalankan docker-compose
+
+**Error:**
+```
+permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+```
+
+**Solusi:**
+```bash
+# Tambahkan user ke group docker
+sudo usermod -aG docker $USER
+sudo newgrp docker
+
+# Lanjutkan dengan perintah docker-compose
+docker-compose up -d
+```
+
+**Catatan:** Setelah `sudo newgrp docker`, shell akan berubah ke root. Lanjutkan tanpa sudo.
+
+#### 2. Dockerfile tidak ditemukan
 
 **Error:**
 ```
@@ -274,7 +334,7 @@ ls -la Dockerfile
 # Jika belum ada, buat Dockerfile seperti di langkah C.3
 ```
 
-#### 2. Port sudah digunakan
+#### 3. Port sudah digunakan
 
 **Error:**
 ```
@@ -292,7 +352,7 @@ ports:
   - "8089:80"  # ganti ke port lain
 ```
 
-#### 3. Volume mount permission denied
+#### 4. Volume mount permission denied
 
 **Error:**
 ```
@@ -315,7 +375,7 @@ mkdir -p ~/mywww/uploads
 sudo chown -R www-data:www-data ~/mywww/uploads
 ```
 
-#### 4. Database connection failed
+#### 5. Database connection failed
 
 **Error:**
 Web server error 500 atau koneksi database gagal.
@@ -335,10 +395,93 @@ docker-compose restart webserver
 docker-compose exec webserver bash -c "mysql -h dbserver -u root -ppass123 -e 'SHOW DATABASES;'"
 ```
 
-#### 5. Service depends_on tidak menunggu db siap
+#### 6. curl tidak menampilkan output (HTTP 302 Redirect)
+
+**Error:**
+```bash
+curl http://localhost:8088
+# Tidak menampilkan output apa-apa
+```
+
+**Penjelasan:**
+Ini bukan error. Web server mengembalikan HTTP 302 redirect ke `login.php`, yang mana curl tidak menampilkan output untuk redirect.
+
+**Solusi:**
+```bash
+# Coba akses dengan verbose untuk melihat redirect
+curl -v http://localhost:8088
+
+# Atau akses login.php langsung
+curl http://localhost:8088/login.php
+
+# Atau akses via browser
+# http://<IP-server>:8088
+# http://<IP-server>:8088/login.php
+```
+
+**Contoh output yang normal:**
+```
+< HTTP/1.1 302 Found
+< Location: login.php
+```
+
+Ini menunjukkan aplikasi berjalan dengan benar dan redirect ke halaman login.
+
+#### 8. Container name berbeda dari yang diharapkan
 
 **Problem:**
-Webserver mulai sebelum database siap, menyebabkan error koneksi.
+Container name tidak sesuai dengan yang ada di dokumentasi (misal: `compose_dbserver_1` bukan `dbserver`).
+
+**Penjelasan:**
+Docker Compose otomatis menambahkan prefix nama folder ke container name dan network name.
+
+**Contoh:**
+- Folder: `~/compose`
+- Container dbserver: `compose_dbserver_1`
+- Container webserver: `compose_webserver_1` atau `webserver` (jika ada `container_name` di docker-compose.yml)
+- Network: `compose_mynet`
+
+**Solusi:**
+Gunakan perintah docker-compose untuk mengelola container, jangan gunakan perintah docker biasa:
+```bash
+# ✅ Benar
+docker-compose exec dbserver mariadb -u root -ppass123
+docker-compose logs webserver
+
+# ❌ Salah (container name tidak sesuai)
+docker exec dbserver mariadb -u root -ppass123
+docker logs dbserver
+```
+
+#### 9. Error "Can't find a suitable configuration file"
+
+**Error:**
+```
+ERROR:
+        Can't find a suitable configuration file in this directory or any
+        parent. Are you in the right directory?
+```
+
+**Solusi:**
+Pastikan berada di folder yang berisi file `docker-compose.yml`:
+```bash
+# Cek posisi folder saat ini
+pwd
+
+# Pindah ke folder yang berisi docker-compose.yml
+cd ~/compose
+
+# Cek file ada
+ls -la docker-compose.yml
+
+# Jalankan docker-compose
+docker-compose up -d
+```
+
+#### 10. Advanced: Menambah Healthcheck untuk Database (Opsional)
+
+**Problem:**
+Webserver mulai sebelum database siap, menyebabkan error koneksi saat pertama kali dijalankan.
 
 **Solusi Tambah healthcheck:**
 ```yaml
@@ -360,9 +503,28 @@ services:
         condition: service_healthy
 ```
 
+**Catatan:** Solusi ini opsional. Cara yang lebih sederhana adalah dengan menjalankan:
+```bash
+docker-compose up -d
+docker-compose exec dbserver mariadb -u root -ppass123 -e "CREATE DATABASE toko_db;"
+docker-compose restart webserver
+```
+
 ---
 
 ### I. Catatan Penting
+
+- **Volume persisten:** Volume `db-data` akan menyimpan data database meskipun container dihapus (kecuali jika menggunakan `docker-compose down -v`)
+- **Network otomatis:** Docker Compose akan membuat network secara otomatis dengan prefix nama folder (misal: `compose_mynet`)
+- **Nama container:** Container yang dikelola compose akan memiliki prefix nama folder (misal: `compose_dbserver_1`), kecuali jika menggunakan `container_name` di docker-compose.yml
+- **File changes:** Jika ada perubahan di Dockerfile, jalankan `docker-compose build` sebelum `docker-compose up -d`
+- **Rebuild image:** Gunakan `docker-compose build --no-cache` untuk build ulang tanpa cache
+- **Environment variables:** Gunakan file `.env` untuk menyimpan password dan konfigurasi sensitif, jangan hardcode di docker-compose.yml
+- **Permission docker:** SELALU jalankan `sudo usermod -aG docker $USER` dan `sudo newgrp docker` sebelum menggunakan docker-compose untuk menghindari permission denied
+- **Folder positioning:** SELALU pastikan berada di folder yang berisi `docker-compose.yml` sebelum menjalankan perintah docker-compose
+- **Volume mount:** Jika mengalami error "read-only file system", gunakan lokasi di home directory (`~/mywww`) bukan `/var/mywww`
+- **Restart setelah database:** SELALU restart webserver setelah membuat database agar koneksi terjalin dengan benar
+- **HTTP 302 normal:** `curl http://localhost:8088` tidak menampilkan output adalah normal karena redirect ke login.php. Gunakan `curl http://localhost:8088/login.php` atau akses via browser
 
 - **Volume persisten:** Volume `db-data` akan menyimpan data database meskipun container dihapus (kecuali jika menggunakan `docker-compose down -v`)
 - **Network otomatis:** Docker Compose akan membuat network secara otomatis, tidak perlu membuat network manual
